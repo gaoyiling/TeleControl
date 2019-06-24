@@ -1,0 +1,6 @@
+TRANSFER
+"..\OBJ\STARTUP.obj",
+"..\OBJ\main.obj",
+"..\OBJ\get_key.obj",
+"..\OBJ\wireless.obj" 
+TO "..\OBJ\Telecontrol.LIB"

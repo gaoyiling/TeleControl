@@ -1,0 +1,159 @@
+C51 COMPILER V9.59.0.0   MAIN                                                              03/23/2019 09:41:08 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN ..\OBJ\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\GETKEY;..\WIRELESS;..\UART) DE
+                    -BUG OBJECTEXTEND PRINT(..\Listings\main.lst) TABS(2) OBJECT(..\OBJ\main.obj)
+
+line level    source
+
+   1          
+   2          
+   3          
+   4          #include "uart.h"
+   5          #include "wireless.h"
+   6          #include "get_key.h"
+   7          
+   8          
+   9          #define soft_rest() IAP_CONTR |= 0x20;   //软件重启
+  10          
+  11          bit flag; 
+  12          unsigned int button_cnt;
+  13          unsigned int button_cnt1;
+  14          
+  15          sbit ext_out = P3^3;   //学习指示灯
+  16          sbit button = P5^5;    //学习按键
+  17          
+  18          
+  19          void Delay1ms(unsigned char ms);
+  20          void led_flash_100ms(unsigned char flash_times);
+  21            
+  22          /********************************************************/
+  23          
+  24          void main(void)
+  25          {
+  26   1          ext_out = 0;
+  27   1        ext0_init();
+  28   1        timer0_init();
+  29   1         timer2_init();
+  30   1        channel_init();
+  31   1        init_addr();
+  32   1      
+  33   1      //  IP = 0X20;      //IP中断寄存器设置
+  34   1        EA = 1;
+  35   1        while (1)
+  36   1        {  
+  37   2        
+  38   2            if(key==1)
+  39   2             { 
+  40   3             get_addr();
+  41   3              EX0=1; 
+  42   3              data0 = 0;
+  43   3               data1 = 0;
+  44   3               key = 0 ;
+  45   3            }
+  46   2      
+  47   2      
+  48   2      
+  49   2          if (!button)     //按键按下
+  50   2          {
+  51   3            Delay1ms(20);
+  52   3            if (!button)
+  53   3            {
+  54   4      //        EA = 0;
+C51 COMPILER V9.59.0.0   MAIN                                                              03/23/2019 09:41:08 PAGE 2   
+
+  55   4              flag = 1;
+  56   4              button_cnt++;
+  57   4              if (button_cnt == 100)  //200*20=4S，长按
+  58   4              {
+  59   5      //          button_cnt = 0;
+  60   5      //          EA = 0;
+  61   5                IapEraseSector(IAP_ADDRESS_0);    //扇区擦除
+  62   5                IapEraseSector(IAP_ADDRESS_1);    //扇区擦除
+  63   5                IapEraseSector(IAP_ADDRESS_2);    //扇区擦除
+  64   5                IapEraseSector(IAP_ADDRESS_3);    //扇区擦除
+  65   5                IapEraseSector(IAP_ADDRESS_4);    //扇区擦除
+  66   5                IapEraseSector(IAP_ADDRESS_5);    //扇区擦除
+  67   5                led_flash_100ms(5);
+  68   5                channel_init();
+  69   5                start = 0;
+  70   5                alarm=0 ;
+  71   5                init_addr();    //更新E2PROOM
+  72   5                ext_out = 0;
+  73   5                study = 0;
+  74   5                
+  75   5      //          EA = 1;
+  76   5              }
+  77   4              if (button_cnt < 100)         //短按
+  78   4              {         
+  79   5                ext_out = 1;
+  80   5                study = 1;  
+  81   5              }
+  82   4            }   
+  83   3          }
+  84   2          else
+  85   2          {
+  86   3            button_cnt = 0;
+  87   3            if (flag)
+  88   3            {
+  89   4              Delay1ms(20);
+  90   4              button_cnt1++;
+  91   4              if (button_cnt1 > 200)  
+  92   4              {
+  93   5                ext_out = 0;
+  94   5                button_cnt1 = 0;
+  95   5                flag = 0;
+  96   5                study = 0;
+  97   5      
+  98   5              }
+  99   4            }     
+ 100   3          } 
+ 101   2        }   
+ 102   1      }
+ 103          
+ 104          void Delay1ms(unsigned char ms)     //@18.432MHz
+ 105          {
+ 106   1          unsigned char i, j;
+ 107   1          while(ms--)
+ 108   1          {
+ 109   2      //        WDT_CONTR |= 0x10;
+ 110   2              i = 18;
+ 111   2              j = 235;
+ 112   2              do
+ 113   2              {
+ 114   3                  while (--j);
+ 115   3              } while (--i);
+ 116   2          }
+C51 COMPILER V9.59.0.0   MAIN                                                              03/23/2019 09:41:08 PAGE 3   
+
+ 117   1      }
+ 118          
+ 119          void led_flash_100ms(unsigned char flash_times)
+ 120          {
+ 121   1          while(flash_times--)
+ 122   1          {
+ 123   2              ext_out = 0;
+ 124   2              Delay1ms(100);
+ 125   2              ext_out = 1;
+ 126   2              Delay1ms(100);
+ 127   2          }
+ 128   1      }
+ 129          
+ 130          
+ 131          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    243    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

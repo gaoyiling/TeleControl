@@ -1,0 +1,6 @@
+"..\OBJ\STARTUP.obj",
+"..\OBJ\main.obj",
+"..\OBJ\wireless.obj",
+"..\OBJ\get_key.obj" 
+TO "..\OBJ\Telecontrol" 
+PRINT("..\Listings\Telecontrol.m51")

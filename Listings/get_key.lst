@@ -1,0 +1,736 @@
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE GET_KEY
+OBJECT MODULE PLACED IN ..\OBJ\get_key.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE ..\GETKEY\get_key.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\GETKEY;..\WIRELES
+                    -S;..\UART) DEBUG OBJECTEXTEND PRINT(..\Listings\get_key.lst) TABS(2) OBJECT(..\OBJ\get_key.obj)
+
+line level    source
+
+   1          #include "get_key.h"
+   2          #include "wireless.h"
+   3          
+   4          //typedef unsigned char BYTE;
+   5          //typedef unsigned int WORD;
+   6          
+   7          
+   8          //sbit channel_1  = P5^4;
+   9          //sbit channel_2  = P5^5;
+  10          //sbit channel_3  = P1^5;
+  11          //sbit channel_4  = P1^4;
+  12          //sbit channel_5  = P1^3;
+  13          //sbit channel_6  = P1^2;
+  14          
+  15          
+  16          sbit ext_out = P3^3;   //学习指示灯
+  17          
+  18          
+  19          /****变量定义*********/
+  20          bit study;
+  21          bit start;
+  22          bit key;
+  23          unsigned char alarm;
+  24          unsigned char mode;
+  25          unsigned char n;
+  26          unsigned char num;
+  27          unsigned char Date;
+  28          unsigned long ADDR_0, ADDR_1, ADDR_2, ADDR_3;
+  29          unsigned long data0, data1;
+  30          
+  31          
+  32          
+  33          
+  34          /*****函数声明***********/
+  35          void self_lock();
+  36          void inter_lock();
+  37          void point_control();
+  38          void mixed_model_1();
+  39          void mixed_model_2();
+  40          void mixed_model_3();
+  41          void mixed_model_4();
+  42          void mixed_model_5();
+  43          void get_addr(void);
+  44          void Delay10us();
+  45          
+  46          void IapIdle();
+  47          unsigned char IapReadByte(unsigned int addr);
+  48          void IapWriteByte(unsigned int addr, unsigned char dat);
+  49          
+  50          
+  51          /**********************************************************
+  52          ********单片机端口设置************************************/
+  53          void channel_init()
+  54          {             
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 2   
+
+  55   1          P1M1 = 0x00;   //P1M1 0000 0000 
+  56   1          P1M0 = 0xFF;   //P1M0 1111 1111   P1.0-P1.7 上下组合01表示推挽输出
+  57   1          P3M1 = 0x04;  //P3M1  0000 0100 前5位01表示推挽输出,后4位00表示准双向口
+  58   1          P3M0 = 0xFC;  //P3M0  1111 1100  和传统8051一样,11为高阻态
+  59   1      //  P5M1 = 0x00;  //推挽输出
+  60   1      //  P5M0 = 0xFF;
+  61   1          P1 = 0x00;
+  62   1          P3 &= 0x0F;   //0111 1111
+  63   1      }
+  64          
+  65          /****重新上电后读取E2PROOM中的地址信息************/
+  66          void init_addr()
+  67          {
+  68   1        mode = 0;
+  69   1        n = 0;           //记录学习的个数
+  70   1        ADDR_0 = 0;        //0x00 01 11 11
+  71   1        ADDR_1 = 0;
+  72   1        ADDR_2 = 0;
+  73   1        ADDR_3 = 0;
+  74   1        
+  75   1        mode = IapReadByte(IAP_ADDRESS_4 + 0);   //第五扇区：存储模式信息
+  76   1        n = IapReadByte(IAP_ADDRESS_5 + 0);   //第六扇区：存储个数信息    
+  77   1      
+  78   1        ADDR_0 |= IapReadByte(IAP_ADDRESS_0 + 3);
+  79   1        ADDR_0 = ADDR_0 << 8;
+  80   1        ADDR_0 |= IapReadByte(IAP_ADDRESS_0 + 2);
+  81   1        ADDR_0 = ADDR_0 << 8;
+  82   1          ADDR_0 |= IapReadByte(IAP_ADDRESS_0 + 1);
+  83   1      
+  84   1        ADDR_1 |= IapReadByte(IAP_ADDRESS_1 + 3);
+  85   1        ADDR_1 = ADDR_1 << 8;
+  86   1        ADDR_1 |= IapReadByte(IAP_ADDRESS_1 + 2);
+  87   1        ADDR_1 = ADDR_1 << 8;
+  88   1          ADDR_1 |= IapReadByte(IAP_ADDRESS_1 + 1);
+  89   1      
+  90   1        ADDR_2 |= IapReadByte(IAP_ADDRESS_2 + 3);
+  91   1        ADDR_2 = ADDR_2 << 8;
+  92   1        ADDR_2 |= IapReadByte(IAP_ADDRESS_2 + 2);
+  93   1        ADDR_2 = ADDR_2 << 8;
+  94   1          ADDR_2 |= IapReadByte(IAP_ADDRESS_2 + 1);
+  95   1      
+  96   1        ADDR_3 |= IapReadByte(IAP_ADDRESS_3 + 3);
+  97   1        ADDR_3 = ADDR_3 << 8;
+  98   1        ADDR_3 |= IapReadByte(IAP_ADDRESS_3 + 2);
+  99   1        ADDR_3 = ADDR_3 << 8;
+ 100   1          ADDR_3 |= IapReadByte(IAP_ADDRESS_3 + 1);
+ 101   1      }
+ 102          
+ 103          /**************************************************
+ 104          ******函数名：void get_addr(void)
+ 105          ******功  能：存储地址
+ 106          ******输  入：
+ 107          ******输  出：
+ 108          **************************************************/
+ 109          void get_addr(void)
+ 110          {
+ 111   1        unsigned long ADDR = 0;   //读取地址
+ 112   1                    //AD1501一位就是一位，不再是两位表示一位了
+ 113   1        if (data0 == data1)    //前而20位为地址，后4位为数据
+ 114   1        {   
+ 115   2          Date = (unsigned char)(data0 & 0x0000000f);  //取出4位数据
+ 116   2          ADDR = (data0 & 0x00fffff0) >> 4;  //取出20位地址
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 3   
+
+ 117   2      
+ 118   2            if (!study)   //(!study)
+ 119   2          {
+ 120   3            if ((ADDR_0 == ADDR) || (ADDR_1 == ADDR) ||(ADDR_2 == ADDR) ||(ADDR_3 == ADDR)) //(ADDR_0 == ADDR)
+ 121   3            {   
+ 122   4              if (Date == 0x0C)   //如果按下启动键，则start置位
+ 123   4              {
+ 124   5                start = 1;
+ 125   5                channel_1 = 1;  //启动继电器通电
+ 126   5                self_lock();  //让alarm自加1，并且对num清零
+ 127   5                if (alarm > 1)
+ 128   5                {
+ 129   6        //          point_control();
+ 130   6        //          alarm = 0;
+ 131   6                  channel_5 = 1;
+ 132   6                
+ 133   6                //  ring=1;  //警铃继电器通电，第一次按启动键时开始启动，
+ 134   6                }         //第2，3...次按下时，警铃响，点动控制
+ 135   5              }
+ 136   4              
+ 137   4              if (start)     //启动标志位置位时执行
+ 138   4              {
+ 139   5                switch (mode)
+ 140   5                { 
+ 141   6                  case 0x04:                //0000 0011   0001
+ 142   6                    mixed_model_1();    
+ 143   6                    break;
+ 144   6                  case 0x02:          //0000 1100   0010    
+ 145   6                    mixed_model_2();
+ 146   6                    break;
+ 147   6                  case 0x06:          //0011 0000   0100
+ 148   6                    mixed_model_3();
+ 149   6                    break;
+ 150   6                  case 0x01:          //0011 0000   0100
+ 151   6                    mixed_model_4();
+ 152   6                    break;
+ 153   6                  case 0x0E:
+ 154   6                      mixed_model_5();
+ 155   6                  default:
+ 156   6                            break;
+ 157   6                } 
+ 158   5              }           
+ 159   4            }     
+ 160   3          }
+ 161   2          else 
+ 162   2          {
+ 163   3            if(Date==0x04||Date==0x02||Date==0x01||Date==0x06||Date==0x0e)
+ 164   3            {
+ 165   4            IapEraseSector(IAP_ADDRESS_4 + 0);    //扇区擦除
+ 166   4            IapWriteByte(IAP_ADDRESS_4 + 0, Date); //存储模式信息
+ 167   4      
+ 168   4            if (n == 1)
+ 169   4            {
+ 170   5              IapEraseSector(IAP_ADDRESS_5);    //扇区擦除
+ 171   5              IapWriteByte(IAP_ADDRESS_5, 2);
+ 172   5              IapEraseSector(IAP_ADDRESS_0);    //扇区擦除        
+ 173   5              Delay10us();          //20位地址需要3个字节存放       
+ 174   5              IapWriteByte(IAP_ADDRESS_0 + 1, ADDR & 0xff); 
+ 175   5              IapWriteByte(IAP_ADDRESS_0 + 2, (ADDR >> 8) & 0xff);
+ 176   5              IapWriteByte(IAP_ADDRESS_0 + 3, (ADDR >> 16) & 0x0f);     
+ 177   5              Delay10us();
+ 178   5              init_addr();            //对ADDR的值进行更新  
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 4   
+
+ 179   5            }
+ 180   4              else if (n == 2)
+ 181   4            {
+ 182   5              IapEraseSector(IAP_ADDRESS_5);    //扇区擦除
+ 183   5              IapWriteByte(IAP_ADDRESS_5, 3);
+ 184   5              IapEraseSector(IAP_ADDRESS_1);    //扇区擦除
+ 185   5              Delay10us();          //20位地址需要3个字节存放
+ 186   5              IapWriteByte(IAP_ADDRESS_1 + 1, ADDR & 0xff); 
+ 187   5              IapWriteByte(IAP_ADDRESS_1 + 2, (ADDR >> 8) & 0xff);
+ 188   5              IapWriteByte(IAP_ADDRESS_1 + 3, (ADDR >> 16) & 0x0f);     
+ 189   5              Delay10us();
+ 190   5              init_addr();            //对ADDR的值进行更新
+ 191   5            }
+ 192   4            else if (n == 3)
+ 193   4            {
+ 194   5              IapEraseSector(IAP_ADDRESS_5);    //扇区擦除
+ 195   5              IapWriteByte(IAP_ADDRESS_5, 0);
+ 196   5              IapEraseSector(IAP_ADDRESS_2);    //扇区擦除                //0x00 0f ff ff
+ 197   5              Delay10us();          //20位地址需要3个字节存放
+ 198   5              IapWriteByte(IAP_ADDRESS_2 + 1, ADDR & 0xff); 
+ 199   5              IapWriteByte(IAP_ADDRESS_2 + 2, (ADDR >> 8) & 0xff);
+ 200   5              IapWriteByte(IAP_ADDRESS_2 + 3, (ADDR >> 16) & 0x0f);     
+ 201   5              Delay10us();
+ 202   5              init_addr();            //对ADDR的值进行更新
+ 203   5            }     
+ 204   4            else
+ 205   4            {
+ 206   5              IapEraseSector(IAP_ADDRESS_5);    //扇区擦除
+ 207   5              IapWriteByte(IAP_ADDRESS_5, 1);
+ 208   5              IapEraseSector(IAP_ADDRESS_3);    //扇区擦除
+ 209   5              Delay10us();      //0x00 0f ff ff20位地址需要3个字节存放
+ 210   5              IapWriteByte(IAP_ADDRESS_3 + 1, ADDR & 0xff); 
+ 211   5              IapWriteByte(IAP_ADDRESS_3 + 2, (ADDR >> 8) & 0xff);
+ 212   5              IapWriteByte(IAP_ADDRESS_3 + 3, (ADDR >> 16) & 0x0f);     
+ 213   5              Delay10us();
+ 214   5              init_addr();            //对ADDR的值进行更新                    
+ 215   5            }
+ 216   4            study = 0;
+ 217   4            ext_out = 0;
+ 218   4          }
+ 219   3        }
+ 220   2        }   
+ 221   1      }
+ 222          
+ 223          /***************************************************
+ 224          *******函数名：void self_lock()
+ 225          *******功  能：电路自锁
+ 226          *******输  入：
+ 227          *******输  出：
+ 228          ***************************************************/
+ 229          void self_lock()
+ 230          {
+ 231   1      //  uart_send_byte(2);
+ 232   1        if (num > 22)
+ 233   1        {
+ 234   2      //    IE2 &= ~0x04;
+ 235   2          switch (Date)
+ 236   2          { 
+ 237   3      //      case 0xc0:                //0000 0011   0001
+ 238   3      ////        Delay1ms(20);
+ 239   3      //        channel_1 = !channel_1;   
+ 240   3      //        break;
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 5   
+
+ 241   3            case 0x04:          //0000 1100   0010  
+ 242   3      //          Delay1ms(20);
+ 243   3              channel_6 = !channel_6;
+ 244   3              break;
+ 245   3            case 0x0C:          //0011 0000   0100
+ 246   3              alarm++;
+ 247   3              break;
+ 248   3            case 0x02:          //1100 0000   1000
+ 249   3      //        Delay1ms(10);
+ 250   3              channel_3 = !channel_3;
+ 251   3              break;
+ 252   3            case 0x0A:          //1100 0000   1000
+ 253   3              channel_8 = !channel_8;
+ 254   3              break;
+ 255   3            case 0x06:          //1100 0000   1000
+ 256   3              channel_2 = !channel_2;
+ 257   3              break;
+ 258   3            case 0x0E:          //1100 0000   1000
+ 259   3              channel_7 = !channel_7;
+ 260   3              break;
+ 261   3            case 0x01:          //1100 0000   1000
+ 262   3              channel_4 = !channel_4;
+ 263   3              break;
+ 264   3            default:
+ 265   3                      break;      
+ 266   3      //      IE2 &= ~0x04;     
+ 267   3          }     
+ 268   2        }
+ 269   1      
+ 270   1        num = 0;   //只要和自锁和点动相关的，每进一次函数不管满不满足要求都要清零
+ 271   1      }        //重新计时
+ 272          /***************************************************
+ 273          *******函数名：void inter_lock()
+ 274          *******功  能：电路互锁
+ 275          *******输  入：
+ 276          *******输  出：
+ 277          ***************************************************/
+ 278          /*
+ 279          void inter_lock()
+ 280          {
+ 281            switch (Date)
+ 282            { 
+ 283              case 0xc0:                //0000 0011   0001
+ 284                channel_init();
+ 285                channel_1 = 1;    
+ 286                break;
+ 287              case 0x30:          //0000 1100   0010  
+ 288                channel_init();  
+ 289                channel_2 = 1;
+ 290                break;
+ 291              case 0xf0:          //0011 0000   0100
+ 292                channel_init();
+ 293                channel_3 = 1;
+ 294                break;
+ 295              case 0x0c:          //1100 0000   1000
+ 296                channel_init();
+ 297                channel_4 = 1;
+ 298                break;
+ 299              case 0xcc:                //0000 0011   0001
+ 300                channel_init();
+ 301                channel_5 = 1;    
+ 302                break;
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 6   
+
+ 303              case 0x3C:          //0000 1100   0010  
+ 304                channel_init();  
+ 305                channel_6 = 1;
+ 306                break;
+ 307              case 0xfc:          //0011 0000   0100
+ 308                channel_init();
+ 309                channel_7 = 1;
+ 310                break;
+ 311              case 0x03:          //1100 0000   1000
+ 312                channel_init();
+ 313                channel_8 = 1;
+ 314                break;
+ 315              default:
+ 316                    break;
+ 317              
+ 318            //      IE2 &= ~0x04;     
+ 319            }     
+ 320          }
+ 321          */
+ 322          /***************************************************
+ 323          *******函数名：void point_control()
+ 324          *******功  能：电路点动
+ 325          *******输  入：
+ 326          *******输  出：
+ 327          ***************************************************/
+ 328          void point_control()
+ 329          {
+ 330   1        if (num > 20)
+ 331   1        {
+ 332   2      //    IE2 &= ~0x04;
+ 333   2          switch (Date)
+ 334   2          { 
+ 335   3      //      case 0xc0:                //0000 0011   0001
+ 336   3      //        channel_1 = 1;    
+ 337   3      //        break;
+ 338   3            case 0x04:          //0000 1100   0010    
+ 339   3              channel_6 = 1;
+ 340   3              break;
+ 341   3            case 0x0C:          //0011 0000   0100
+ 342   3              channel_5 = 1;
+ 343   3              break;
+ 344   3            case 0x02:          //1100 0000   1000
+ 345   3              channel_3 = 1;
+ 346   3              break;
+ 347   3            case 0x0A:                //0000 0011   0001
+ 348   3              channel_8 = 1;    
+ 349   3              break;
+ 350   3            case 0x06:          //0000 1100   0010    
+ 351   3              channel_2 = 1;
+ 352   3              break;
+ 353   3            case 0x0E:          //0011 0000   0100
+ 354   3              channel_7 = 1;
+ 355   3              break;
+ 356   3            case 0x01:          //1100 0000   1000
+ 357   3              channel_4 = 1;
+ 358   3              break;
+ 359   3            default:
+ 360   3                      break;      
+ 361   3      //      IE2 &= ~0x04;     
+ 362   3          }     
+ 363   2        }
+ 364   1        num = 0;
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 7   
+
+ 365   1      }
+ 366          
+ 367          /***************************************************
+ 368          *******函数名：void mixed_model_1()
+ 369          *******功  能：电路混合-上下左右自锁
+ 370          *******输  入：
+ 371          *******输  出：
+ 372          ***************************************************/
+ 373          void mixed_model_1()
+ 374          {
+ 375   1        switch (Date)
+ 376   1        { 
+ 377   2          case 0x08:     //停止按键，按下所有的继电器断电           
+ 378   2            channel_init(); 
+ 379   2            start = 0;
+ 380   2            alarm = 0;  
+ 381   2            break;
+ 382   2          case 0x04:          
+ 383   2            //channel_3 = 0;  
+ 384   2            self_lock();
+ 385   2            break;
+ 386   2      //    case 0xf0:      //启动键第二次按下时，电铃响    
+ 387   2      //      channel_3 = 1;  //这里继电器接电铃
+ 388   2      //      break;
+ 389   2          case 0x02:          
+ 390   2            //channel_6 = 0;
+ 391   2            self_lock();
+ 392   2            break;
+ 393   2          case 0x0A:            
+ 394   2            self_lock();
+ 395   2            break;
+ 396   2          case 0x06:            
+ 397   2            //channel_4 = 0;
+ 398   2            self_lock();
+ 399   2            break;
+ 400   2          case 0x0E:          //1100 0000   1000
+ 401   2            self_lock();
+ 402   2            break;
+ 403   2          case 0x01:          //1100 0000   1000
+ 404   2            //channel_2 = 0;
+ 405   2            self_lock();
+ 406   2            break;
+ 407   2          default:
+ 408   2                break;
+ 409   2          
+ 410   2        //      IE2 &= ~0x04;     
+ 411   2        }     
+ 412   1      }
+ 413          
+ 414          
+ 415          
+ 416          /***************************************************
+ 417          *******函数名：void mixed_model_2()
+ 418          *******功  能：电路混合-上下左右点动
+ 419          *******输  入：
+ 420          *******输  出：
+ 421          ***************************************************/
+ 422          void mixed_model_2()
+ 423          {
+ 424   1        switch (Date)
+ 425   1        { 
+ 426   2          case 0x08:                //停止按键，按下所有的继电器断电
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 8   
+
+ 427   2            channel_init(); 
+ 428   2            start = 0;        //启动标志位清零
+ 429   2            alarm = 0;        //启动按键次数清零
+ 430   2            break;
+ 431   2          case 0x04:          //0000 1100   0010
+ 432   2            point_control();
+ 433   2            break;
+ 434   2      //    case 0xf0:          //0011 0000   0100
+ 435   2      //      channel_3 = 1;      //这里继电器接电铃
+ 436   2      //      break;
+ 437   2          case 0x02:          //1100 0000   1000
+ 438   2            point_control();
+ 439   2            break;
+ 440   2          case 0x0A:          //0000 1100   0010  
+ 441   2            self_lock();
+ 442   2            break;
+ 443   2          case 0x06:          //0000 1100   0010  
+ 444   2            point_control();
+ 445   2            break;
+ 446   2          case 0x0E:          //1100 0000   1000
+ 447   2            self_lock();
+ 448   2            break;
+ 449   2          case 0x01:          //1100 0000   1000
+ 450   2            point_control();
+ 451   2            break;
+ 452   2          default:
+ 453   2                break;
+ 454   2          
+ 455   2        //      IE2 &= ~0x04;     
+ 456   2        }     
+ 457   1      }
+ 458          
+ 459          
+ 460          /***************************************************
+ 461          *******函数名：void mixed_model_3()
+ 462          *******功  能：电路混合-上下点动左右自锁(左右中带互锁功能)
+ 463          *******输  入：
+ 464          *******输  出：
+ 465          ***************************************************/
+ 466          void mixed_model_3()
+ 467          {
+ 468   1        switch (Date)
+ 469   1        { 
+ 470   2          case 0x08:                //停止按键，按下所有的继电器断电
+ 471   2            channel_init();
+ 472   2            start = 0;         //启动标志位清零
+ 473   2            alarm = 0;         //启动按键次数清零
+ 474   2            break;
+ 475   2          case 0x04:          //0000 1100   0010
+ 476   2            point_control();
+ 477   2            break;
+ 478   2      //    case 0xf0:          //0011 0000   0100
+ 479   2      //      channel_3 = 1;      //这里继电器接电铃
+ 480   2      //      break;
+ 481   2          case 0x02:          //1100 0000   1000
+ 482   2            point_control();
+ 483   2            break;
+ 484   2          case 0x0A:          //0000 1100   0010  
+ 485   2            self_lock();
+ 486   2            break;
+ 487   2          case 0x06:          //0000 1100   0010  
+ 488   2            channel_4 = 0;
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 9   
+
+ 489   2            self_lock();
+ 490   2            break;
+ 491   2          case 0x0E:          //1100 0000   1000
+ 492   2            self_lock();
+ 493   2            break;
+ 494   2          case 0x01:          //1100 0000   1000
+ 495   2            channel_2 = 0;
+ 496   2            self_lock();
+ 497   2            break;
+ 498   2          default:
+ 499   2                break;
+ 500   2        //      IE2 &= ~0x04;     
+ 501   2        }     
+ 502   1      }
+ 503          
+ 504          
+ 505          /***************************************************
+ 506          *******函数名：void mixed_model_4()
+ 507          *******功  能：电路混合-上下点动锁左右互锁
+ 508          *******输  入：
+ 509          *******输  出：
+ 510          ***************************************************/
+ 511          void mixed_model_4()
+ 512          {
+ 513   1        switch (Date)
+ 514   1        { 
+ 515   2          case 0x08:                //停止按键，按下所有的继电器断电
+ 516   2            channel_init();
+ 517   2            start = 0;
+ 518   2            alarm = 0;    
+ 519   2            break;
+ 520   2          case 0x04:          //0000 1100   0010
+ 521   2            channel_3 = 0;  
+ 522   2            self_lock();
+ 523   2            break;
+ 524   2      //    case 0xf0:          //0011 0000   0100
+ 525   2      //      channel_3 = 1;      //这里继电器接电铃
+ 526   2      //      break;
+ 527   2          case 0x02:          //1100 0000   1000
+ 528   2            channel_6 = 0;
+ 529   2            self_lock();
+ 530   2            break;
+ 531   2          case 0x0A:          //0000 1100   0010  
+ 532   2            self_lock();
+ 533   2            break;
+ 534   2          case 0x06:
+ 535   2            channel_4 = 0;          //0000 1100   0010  
+ 536   2            self_lock();
+ 537   2            break;
+ 538   2          case 0x0E:          //1100 0000   1000
+ 539   2            self_lock();
+ 540   2            break;
+ 541   2          case 0x01:
+ 542   2            channel_2 = 0;          //1100 0000   1000
+ 543   2            self_lock();
+ 544   2            break;
+ 545   2          default:
+ 546   2                break;
+ 547   2        //      IE2 &= ~0x04;     
+ 548   2        }     
+ 549   1      }
+ 550          
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 10  
+
+ 551           /***************************************************
+ 552          *******函数名：void mixed_model_5()
+ 553          *******功  能：电路混合-上下点动锁左右自锁
+ 554          *******输  入：
+ 555          *******输  出：
+ 556          ***************************************************/
+ 557          void mixed_model_5()
+ 558          {
+ 559   1        switch (Date)
+ 560   1        { 
+ 561   2          case 0x08:                //停止按键，按下所有的继电器断电
+ 562   2            channel_init();
+ 563   2            start = 0;
+ 564   2            alarm = 0;    
+ 565   2            break;
+ 566   2          case 0x04:          //0000 1100   0010
+ 567   2          point_control();
+ 568   2            break;
+ 569   2      //    case 0xf0:          //0011 0000   0100
+ 570   2      //      channel_3 = 1;      //这里继电器接电铃
+ 571   2      //      break;
+ 572   2          case 0x02:          //1100 0000   1000
+ 573   2          point_control();
+ 574   2            break;
+ 575   2          case 0x0A:          //0000 1100   0010  
+ 576   2            self_lock();
+ 577   2            break;
+ 578   2          case 0x06:          //0000 1100   0010  
+ 579   2            self_lock();
+ 580   2            break;
+ 581   2          case 0x0E:          //1100 0000   1000
+ 582   2            self_lock();
+ 583   2            break;
+ 584   2          case 0x01:          //1100 0000   1000
+ 585   2            self_lock();
+ 586   2            break;
+ 587   2          default:
+ 588   2                break;
+ 589   2        //      IE2 &= ~0x04;     
+ 590   2        }     
+ 591   1      }
+ 592          /*----------------------------
+ 593          软件延时
+ 594          ----------------------------*/
+ 595          
+ 596          void Delay10us()    //@18.432MHz
+ 597          {
+ 598   1        unsigned char i;
+ 599   1      
+ 600   1        _nop_();
+ 601   1        _nop_();
+ 602   1        i = 43;
+ 603   1        while (--i);
+ 604   1      }
+ 605          /**********************************************************
+ 606          ** 函数名称: void IapIdle()
+ 607          ** 功能描述: 退出IAP功能
+ 608          **********************************************************/
+ 609          void IapIdle()
+ 610          {
+ 611   1          IAP_CONTR = 0;                  //关闭IAP功能
+ 612   1          IAP_CMD = 0;                    //清除命令寄存器进入待机模式
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 11  
+
+ 613   1          IAP_TRIG = 0;                   //清除触发寄存器
+ 614   1          IAP_ADDRH = 0x80;               //将地址设置到非IAP区域
+ 615   1          IAP_ADDRL = 0;
+ 616   1      }
+ 617          
+ 618          /**********************************************************
+ 619          ** 函数名称: unsigned char IapReadByte(unsigned int addr);
+ 620          ** 功能描述: 读EEPROM
+ 621          ** 输　  入: unsigned int addr  地址
+ 622          ** 输　  出: unsigned char dat  数据
+ 623          **********************************************************/
+ 624          unsigned char IapReadByte(unsigned int addr)
+ 625          {
+ 626   1          unsigned char dat;                       //数据缓冲区
+ 627   1      
+ 628   1          IAP_CONTR = ENABLE_IAP;         //使能IAP
+ 629   1          IAP_CMD = CMD_READ;             //设置 ISP/IAP/EEPROM 为读命令
+ 630   1          IAP_ADDRL = addr;               //设置 ISP/IAP/EEPROM 低位地址
+ 631   1          IAP_ADDRH = addr >> 8;          //设置 ISP/IAP/EEPROM 高位地址
+ 632   1          IAP_TRIG = 0x5a;                //写触发命令(0x5a)
+ 633   1          IAP_TRIG = 0xa5;                //写触发命令(0xa5)
+ 634   1          _nop_();                        //等待ISP/IAP/EEPROM操作完成
+ 635   1          dat = IAP_DATA;                 //读ISP/IAP/EEPROM数据
+ 636   1          IapIdle();                      //关闭ISP/IAP/EEPROM过程
+ 637   1      
+ 638   1          return dat;                     //返回 Flash 数据
+ 639   1      }
+ 640          
+ 641          /**********************************************************
+ 642          ** 函数名称: void IapWriteByte(unsigned int addr, unsigned char dat);
+ 643          ** 功能描述: 写EEPROM扇区
+ 644          ** 输　  入: unsigned int addr  写地址
+ 645                       unsigned char dat  写数据
+ 646          **********************************************************/
+ 647          void IapWriteByte(unsigned int addr, unsigned char dat)
+ 648          {
+ 649   1          IAP_CONTR = ENABLE_IAP;         //使能IAP
+ 650   1          IAP_CMD = CMD_WRITE;            //设置 ISP/IAP/EEPROM 为写命令
+ 651   1          IAP_ADDRL = addr;               //设置IAP低地址
+ 652   1          IAP_ADDRH = addr >> 8;          //设置IAP高地址
+ 653   1          IAP_DATA = dat;                 //写ISP/IAP/EEPROM数据
+ 654   1          IAP_TRIG = 0x5a;                //写触发命令(0x5a)
+ 655   1          IAP_TRIG = 0xa5;                //写触发命令(0xa5)
+ 656   1          _nop_();                        //等待ISP/IAP/EEPROM操作完成
+ 657   1          IapIdle();
+ 658   1      }
+ 659          
+ 660          /**********************************************************
+ 661          ** 函数名称: void IapEraseSector(unsigned int addr);
+ 662          ** 功能描述: 擦除EEPROM扇区
+ 663          ** 输　  入: unsigned int addr 擦除地址
+ 664          **********************************************************/
+ 665          void IapEraseSector(unsigned int addr)
+ 666          {
+ 667   1          IAP_CONTR = ENABLE_IAP;         //使能IAP
+ 668   1          IAP_CMD = CMD_ERASE;            //设置 ISP/IAP/EEPROM 为擦除命令
+ 669   1          IAP_ADDRL = addr;               //设置 ISP/IAP/EEPROM 低位地址
+ 670   1          IAP_ADDRH = addr >> 8;          //设置 ISP/IAP/EEPROM 高位地址
+ 671   1          IAP_TRIG = 0x5a;                //写触发命令(0x5a)
+ 672   1          IAP_TRIG = 0xa5;                //写触发命令(0xa5)
+ 673   1          _nop_();                        //等待ISP/IAP/EEPROM操作完成
+ 674   1      //  _nop_();
+C51 COMPILER V9.59.0.0   GET_KEY                                                           03/23/2019 09:41:08 PAGE 12  
+
+ 675   1          IapIdle();            // 关闭 ISP/IAP/EEPROM 过程
+ 676   1      }
+ 677          
+ 678          
+ 679          
+ 680          
+ 681          
+ 682          
+ 683          
+ 684          
+ 685          
+ 686          
+ 687          
+ 688          
+ 689          
+ 690          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1634    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     29       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
